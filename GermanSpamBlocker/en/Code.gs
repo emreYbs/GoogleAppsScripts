@@ -1,94 +1,111 @@
 /**
- * Gmail German Spam Blocker (v4 - English)
- * - Scans both Inbox and Spam folders.
- * - Exempts privacy/alias services (SimpleLogin, Proton Pass, Apple Hide My Email)
- *   from the random bot-address rule to prevent false positives.
- * - Never permanently deletes emails; safely moves matches to Trash.
+ * Gmail German Dating Spam Blocker (with Conflict-Safe & Live Logging)
+ * 
+ * PURPOSE:
+ * Scans recent emails in Inbox and Spam folders, detects German dating/phishing
+ * spam patterns, and safely moves matches to Trash.
  */
 
-// ==================== SETTINGS ====================
+// ==================== SECTION 1: SETTINGS ====================
+// All settings are grouped inside a single 'var SPAM_SETTINGS' object.
+// This prevents 'SyntaxError: Identifier has already been declared' errors.
 
-// 1. Privacy / Alias Services (Exempt from the random bot-address rule)
-const PRIVACY_SERVICE_DOMAINS = [
-  "simplelogin.co",
-  "simplelogin.com",
-  "simplelogin.fr",
-  "aleeas.com",
-  "passmail.net",
-  "passinbox.com",
-  "privaterelay.appleid.com",
-  "icloud.com"
-];
+var SPAM_SETTINGS = {
+  // Maximum number of email threads to scan per execution
+  MAX_THREADS: 25,
 
-// 2. Directly blocked Top-Level Domains (TLDs)
-const BLOCKED_TLDS = [
-  ".biz"
-];
+  // Minimum keyword matches required for the general German pool
+  SCORE_THRESHOLD: 2,
 
-// 3. Exact Spam Patterns (Matching ANY SINGLE phrase triggers the filter)
-const EXACT_SPAM_PATTERNS = [
-  "singles in deiner nähe",
-  "sag hallo und schau, wohin es führt",
-  "deine art mensch ist online",
-  "heute jemanden ins auge gefasst",
-  "sind heute online",
-  "sind jetzt online",
-  "bereit jetzt",
-  "sie denkt gerade an dich",
-  "das beste fängt mit einem simplen hallo an",
-  "echte singles in deiner nähe",
-  "nimm, was dein ist",
-  "bitte date verantwortungsbewusst",
-  "du erhältst diese e-mail im rahmen einer aktion",
-  "sie hat dich für heute nacht ausgesucht",
-  "wartet auf dich",
-  "sie hat dir etwas heißes geschickt",
-  "lass die smalltalk-apps",
-  "leute in deiner nähe sind gerade online"
-];
+  // Action to apply on caught emails: "TRASH" (Move to Trash) or "LABEL" (Test mode)
+  ACTION_TYPE: "TRASH",
 
-// 4. Blocked Sender Names or Specific Domain Keywords
-const BLOCKED_SENDERS = [
-  "new match",
-  "meetic",
-  "online now",
-  "loveciaty",
-  "profinderlclubpartner",
-  "osmartflirtoneconnect"
-];
+  // Privacy / Alias Services (Exempt from the random bot-address rule)
+  PRIVACY_SERVICE_DOMAINS: [
+    "simplelogin.co",
+    "simplelogin.com",
+    "simplelogin.fr",
+    "aleeas.com",
+    "passmail.net",
+    "passinbox.com",
+    "privaterelay.appleid.com",
+    "icloud.com"
+  ],
 
-// 5. General German Keyword Pool (Used for scoring)
-const GERMAN_KEYWORDS = [
-  "sehr geehrte", "herzlichen glückwunsch", "gewinn", "konto", "bestätigen",
-  "klicken sie", "zahlung", "rechnung", "dringend", "verifizierung",
-  "kostenlos", "jetzt", "deiner nähe", "bereit", "schau", "chatten", "heißes"
-];
+  // Directly blocked Top-Level Domains (TLDs)
+  BLOCKED_TLDS: [
+    ".biz"
+  ],
 
-// 6. Trusted Senders (Whitelist - completely bypasses all rules)
-const WHITELIST_SENDERS = [
-  // "trusted@example.com"
-];
+  // Exact Spam Patterns (Matching ANY SINGLE phrase triggers the filter)
+  EXACT_SPAM_PATTERNS: [
+    "singles in deiner nähe",
+    "sag hallo und schau, wohin es führt",
+    "deine art mensch ist online",
+    "heute jemanden ins auge gefasst",
+    "sind heute online",
+    "sind jetzt online",
+    "bereit jetzt",
+    "sie denkt gerade an dich",
+    "das beste fängt mit einem simplen hallo an",
+    "echte singles in deiner nähe",
+    "nimm, was dein ist",
+    "bitte date verantwortungsbewusst",
+    "du erhältst diese e-mail im rahmen einer aktion",
+    "sie hat dich für heute nacht ausgesucht",
+    "wartet auf dich",
+    "sie hat dir etwas heißes geschickt",
+    "lass die smalltalk-apps",
+    "leute in deiner nähe sind gerade online"
+  ],
 
-// 7. Minimum keyword matches required for the general German pool
-const SCORE_THRESHOLD = 2;
+  // Blocked Sender Names or Specific Domain Keywords
+  BLOCKED_SENDERS: [
+    "new match",
+    "meetic",
+    "online now",
+    "loveciaty",
+    "profinderlclubpartner",
+    "osmartflirtoneconnect"
+  ],
 
-// 8. Action to take on matched emails:
-// "TRASH" -> Moves to Trash (recoverable for 30 days, safe)
-// "LABEL" -> Does not move; applies a test label ("German-Spam-Test")
-const ACTION_TYPE = "TRASH";
+  // General German Keyword Pool (Used for scoring)
+  GERMAN_KEYWORDS: [
+    "sehr geehrte", "herzlichen glückwunsch", "gewinn", "konto", "bestätigen",
+    "klicken sie", "zahlung", "rechnung", "dringend", "verifizierung",
+    "kostenlos", "jetzt", "deiner nähe", "bereit", "schau", "chatten", "heißes"
+  ],
 
-// ==================================================
+  // Trusted Senders (Whitelist - completely bypasses all rules)
+  WHITELIST_SENDERS: [
+    // "trusted@example.com"
+  ]
+};
 
+// ==================== SECTION 2: MAIN FUNCTION ====================
+
+/**
+ * Main function triggered manually via 'Run' button or time-driven Triggers.
+ */
 function blockGermanSpam() {
-  const searchQuery = "(in:inbox OR in:spam) newer_than:2d";
-  const threads = GmailApp.search(searchQuery, 0, 50);
+  console.info("Scan started... Checking emails from the last 2 days.");
 
+  // Search Inbox and Spam folders for threads newer than 2 days
+  const searchQuery = "(in:inbox OR in:spam) newer_than:2d";
+  const threads = GmailApp.search(searchQuery, 0, SPAM_SETTINGS.MAX_THREADS);
+
+  console.info("Found " + threads.length + " email threads. Analyzing...");
+
+  // Prepare test label if ACTION_TYPE is set to "LABEL"
   let testLabel = null;
-  if (ACTION_TYPE === "LABEL") {
+  if (SPAM_SETTINGS.ACTION_TYPE === "LABEL") {
     testLabel = GmailApp.getUserLabelByName("German-Spam-Test") ||
                 GmailApp.createLabel("German-Spam-Test");
   }
 
+  let caughtCount = 0;
+
+  // Iterate through each email thread
   for (let i = 0; i < threads.length; i++) {
     const thread = threads[i];
     const messages = thread.getMessages();
@@ -98,29 +115,48 @@ function blockGermanSpam() {
     const cleanEmail = extractEmailAddress(rawSender);
 
     // Layer 0: Skip whitelisted senders completely
-    if (containsAny(rawSender, WHITELIST_SENDERS)) {
+    if (containsAny(rawSender, SPAM_SETTINGS.WHITELIST_SENDERS)) {
       continue;
     }
 
-    const subject = lastMessage.getSubject() || "";
+    const subject = lastMessage.getSubject() || "(No Subject)";
     const body = lastMessage.getPlainBody() || "";
     const fullText = (subject + " " + body).toLowerCase();
 
-    // Detection Layers
+    // Layers 1-4: Filtering Checks
     const tldMatch = hasBlockedTld(cleanEmail);
-    const senderMatch = containsAny(rawSender, BLOCKED_SENDERS);
-    const exactPatternMatch = containsAny(fullText, EXACT_SPAM_PATTERNS);
+    const senderMatch = containsAny(rawSender, SPAM_SETTINGS.BLOCKED_SENDERS);
+    const exactPatternMatch = containsAny(fullText, SPAM_SETTINGS.EXACT_SPAM_PATTERNS);
     const score = calculateGermanScore(fullText);
 
-    // Only apply random bot-address check if sender is NOT a privacy/alias service
+    // Apply random bot-address check only if sender is NOT a privacy/alias service
     const isPrivacy = isPrivacyService(cleanEmail);
     const botAddressAndGerman = !isPrivacy && isRandomBotAddress(cleanEmail) && score >= 1;
 
-    if (tldMatch || senderMatch || exactPatternMatch || botAddressAndGerman || score >= SCORE_THRESHOLD) {
-      applyAction(thread, testLabel, subject, cleanEmail);
+    // Trigger action if any detection layer matches
+    if (tldMatch || senderMatch || exactPatternMatch || botAddressAndGerman || score >= SPAM_SETTINGS.SCORE_THRESHOLD) {
+      caughtCount++;
+
+      // Determine exact reason for Execution Log visibility
+      let reason = "Keyword Score (" + score + ")";
+      if (tldMatch) reason = "Blocked TLD (.biz etc.)";
+      else if (senderMatch) reason = "Blocked Sender";
+      else if (exactPatternMatch) reason = "Exact Spam Pattern";
+      else if (botAddressAndGerman) reason = "Bot Address + German";
+
+      applyAction(thread, testLabel, subject, cleanEmail, reason);
     }
   }
+
+  // Print final summary to the Execution Log
+  console.info(
+    "Scan complete! Analyzed: " + threads.length +
+    " | Caught Spam: " + caughtCount +
+    " | Clean/Normal: " + (threads.length - caughtCount)
+  );
 }
+
+// ==================== SECTION 3: HELPER FUNCTIONS ====================
 
 /**
  * Extracts 'user@domain.com' from 'Display Name <user@domain.com>'.
@@ -138,7 +174,7 @@ function isPrivacyService(emailAddress) {
   if (parts.length !== 2) return false;
 
   const domain = parts[1].toLowerCase();
-  return PRIVACY_SERVICE_DOMAINS.some(service =>
+  return SPAM_SETTINGS.PRIVACY_SERVICE_DOMAINS.some(service =>
     domain === service.toLowerCase() || domain.endsWith("." + service.toLowerCase())
   );
 }
@@ -147,7 +183,9 @@ function isPrivacyService(emailAddress) {
  * Checks if the email address ends with any TLD in BLOCKED_TLDS.
  */
 function hasBlockedTld(emailAddress) {
-  return BLOCKED_TLDS.some(tld => emailAddress.endsWith(tld.toLowerCase()));
+  return SPAM_SETTINGS.BLOCKED_TLDS.some(tld =>
+    emailAddress.endsWith(tld.toLowerCase())
+  );
 }
 
 /**
@@ -174,8 +212,9 @@ function containsAny(text, list) {
  */
 function calculateGermanScore(text) {
   let score = 0;
-  for (let j = 0; j < GERMAN_KEYWORDS.length; j++) {
-    const word = GERMAN_KEYWORDS[j].toLowerCase();
+  const keywords = SPAM_SETTINGS.GERMAN_KEYWORDS;
+  for (let j = 0; j < keywords.length; j++) {
+    const word = keywords[j].toLowerCase();
     const regex = new RegExp("(^|[\\s.,!?;:()\"'\\-])" + word + "($|[\\s.,!?;:()\"'\\-])", "i");
     if (regex.test(text)) {
       score++;
@@ -185,14 +224,14 @@ function calculateGermanScore(text) {
 }
 
 /**
- * Applies the configured ACTION_TYPE and logs the result.
+ * Applies the configured ACTION_TYPE and logs the exact reason.
  */
-function applyAction(thread, testLabel, subject, cleanEmail) {
-  if (ACTION_TYPE === "TRASH") {
+function applyAction(thread, testLabel, subject, cleanEmail, reason) {
+  if (SPAM_SETTINGS.ACTION_TYPE === "TRASH") {
     thread.moveToTrash();
-    Logger.log("Moved to Trash [" + cleanEmail + "]: " + subject);
-  } else if (ACTION_TYPE === "LABEL") {
+    console.log("🗑️ Moved to Trash [" + reason + "] -> Sender: " + cleanEmail + " | Subject: " + subject);
+  } else if (SPAM_SETTINGS.ACTION_TYPE === "LABEL") {
     thread.addLabel(testLabel);
-    Logger.log("Test label added [" + cleanEmail + "]: " + subject);
+    console.log("🏷️ Labeled [" + reason + "] -> Sender: " + cleanEmail + " | Subject: " + subject);
   }
 }
