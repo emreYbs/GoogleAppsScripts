@@ -155,3 +155,21 @@ vite.config.ts.timestamp-*
 .nx/cache
 .nx/workspace-data
 .nx/migrate-runs
+
+
+# İşletim sistemi dosyaları (Mac / Windows)
+.DS_Store
+Thumbs.db
+
+# Node.js ve yerel araç klasörleri
+node_modules/
+
+# Gizli anahtarlar, ortam değişkenleri ve Apps Script yerel kimlikleri
+.env
+.clasp.json
+secrets.js
+local-config.js
+
+# Editör ayarları
+.vscode/
+.idea/
