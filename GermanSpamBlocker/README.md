@@ -23,3 +23,5 @@ A lightweight, serverless Google Apps Script that automatically detects German d
 ## Disclaimer
 
 This script runs exclusively inside your own Google account and never sends data to third-party servers. Setting `ACTION_TYPE = "LABEL"` for a few days is recommended to verify accuracy first.
+
+> **Türkçe dokümantasyon için:** [tr/README.md](tr/README.md) dosyasına göz atabilirsiniz.
